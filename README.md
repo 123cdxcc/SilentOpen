@@ -35,6 +35,41 @@ SilentOpen 把这部分信息摆到台面上：谁在监听、从哪个目录启
 - 权限受限或进程已退出时，部分信息可能显示「未知」。
 - 只列出监听端口的 TCP 服务，不含其他网络连接。
 
+## 下载后无法打开
+
+以下操作仅适用于从本仓库 Releases 下载、且你确认可信的文件。macOS 版本尚未经过 Apple 公证，Windows 版本尚未做代码签名，首次运行可能被系统安全机制拦截。
+
+### macOS
+
+如果提示「无法验证开发者」或「Apple 无法检查其是否包含恶意软件」：
+
+1. 解压下载的 ZIP，将 `SilentOpen.app` 拖入「应用程序」文件夹。
+2. 尝试打开一次，然后进入「系统设置 → 隐私与安全性」。
+3. 在安全性区域找到 SilentOpen 的拦截提示，点击「仍要打开」，按提示确认并输入密码或使用 Touch ID。
+
+如果提示「应用已损坏，无法打开」，先重新下载并解压；可将下载文件的 SHA-256 与同一 Release 的 `checksums.txt` 核对。确认文件完整且来源可信后，若仍被拦截，可在「终端」中移除该应用的下载隔离属性，再尝试打开：
+
+```sh
+xattr -dr com.apple.quarantine /Applications/SilentOpen.app
+```
+
+如果应用放在其他目录，请将命令中的路径替换为实际路径；路径含空格时用双引号包裹。此命令仅处理指定应用，无需关闭系统的全局安全检查。
+
+### Windows
+
+如果 SmartScreen 提示「Windows 已保护你的电脑」，点击「更多信息 → 仍要运行」。
+
+如果文件属性中显示来自其他计算机的安全限制，可右键下载的 `.exe`，打开「属性 → 常规」，勾选「解除锁定」（如有），点击「应用」后重新运行。若提示缺少 WebView2 Runtime，请先安装 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。
+
+### Linux
+
+如果解压后提示「权限不足」或 `Permission denied`，在可执行文件所在目录打开终端，添加执行权限后运行：
+
+```sh
+chmod +x ./SilentOpen
+./SilentOpen
+```
+
 ## 开发
 
 开发、构建与仓库约定见 [AGENTS.md](AGENTS.md)。
