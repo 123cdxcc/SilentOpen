@@ -1,0 +1,157 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-universal
+            os: macos-14
+            platform: darwin/universal
+            tags: ''
+          - name: windows-amd64
+            os: windows-2022
+            platform: windows/amd64
+            tags: ''
+          - name: linux-amd64
+            os: ubuntu-24.04
+            platform: linux/amd64
+            tags: webkit2_41
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev pkg-config build-essential
+
+      - name: Prepare build metadata
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const isRelease = process.env.GITHUB_EVENT_NAME === 'push'
+          const tag = process.env.GITHUB_REF_NAME
+          if (isRelease && !/^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(tag)) {
+            throw new Error('Release tags must use v1.2.3 or v1.2.3-rc.1 format')
+          }
+          const version = isRelease ? tag.slice(1) : 'dev'
+          fs.appendFileSync(process.env.GITHUB_ENV, `VERSION=${version}\n`)
+          const config = JSON.parse(fs.readFileSync('wails.json', 'utf8'))
+          config['frontend:install'] = 'npm ci'
+          config.info = {
+            ...config.info,
+            productVersion: isRelease ? version.split('-')[0] : '0.0.0',
+          }
+          fs.writeFileSync('wails.json', JSON.stringify(config, null, 2) + '\n')
+          NODE
+
+      - name: Install matching Wails CLI
+        run: |
+          wails_version=$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2)
+          go install "github.com/wailsapp/wails/v2/cmd/wails@$wails_version"
+
+      - name: Check update compatibility
+        if: runner.os == 'Linux'
+        run: go test ./pkg/update
+
+      - name: Build application
+        env:
+          TARGET_PLATFORM: ${{ matrix.platform }}
+          BUILD_TAGS: ${{ matrix.tags }}
+        run: |
+          wails build -clean -platform "$TARGET_PLATFORM" -tags "$BUILD_TAGS" \
+            -ldflags "-X main.version=$VERSION -X main.releaseRepository=$GITHUB_REPOSITORY"
+
+      - name: Package macOS application
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p release
+          codesign --force --deep --sign - build/bin/SilentOpen.app
+          codesign --verify --deep --strict build/bin/SilentOpen.app
+          ditto -c -k --sequesterRsrc --keepParent build/bin/SilentOpen.app \
+            "release/SilentOpen-$VERSION-macos-universal.zip"
+
+      - name: Package Windows application
+        if: runner.os == 'Windows'
+        run: |
+          mkdir -p release
+          cp build/bin/SilentOpen.exe "release/SilentOpen-$VERSION-windows-amd64.exe"
+
+      - name: Package Linux application
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p release
+          tar -czf "release/SilentOpen-$VERSION-linux-amd64.tar.gz" -C build/bin SilentOpen
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SilentOpen-${{ matrix.name }}
+          path: release/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SilentOpen-*
+          path: release
+          merge-multiple: true
+
+      - name: Publish complete release
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          version=${RELEASE_TAG#v}
+          test -s "SilentOpen-$version-macos-universal.zip"
+          test -s "SilentOpen-$version-windows-amd64.exe"
+          test -s "SilentOpen-$version-linux-amd64.tar.gz"
+          sha256sum SilentOpen-* > checksums.txt
+          flags=()
+          if [[ "$version" == *-* ]]; then
+            flags+=(--prerelease --latest=false)
+          fi
+          # gh uploads assets to a draft before publishing it.
+          gh release create "$RELEASE_TAG" SilentOpen-* checksums.txt \
+            --verify-tag --title "SilentOpen $RELEASE_TAG" --generate-notes "${flags[@]}"
