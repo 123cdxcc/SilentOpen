@@ -1,0 +1,23 @@
+# Wails / Go 构建产物
+build/bin
+
+# 前端依赖与构建输出
+node_modules
+frontend/dist
+
+# Wails 构建缓存（依赖变化时自动重新生成）
+frontend/package.json.md5
+
+# 编辑器 / IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 日志与临时文件
+*.log
+*.tmp
