@@ -65,3 +65,7 @@ git push origin v1.2.3
 每个新版本使用新标签；工作流不会覆盖已发布的同名 Release。如果上传中断并留下草稿，可删除该草稿后重新运行失败任务。
 
 平台要求：Linux 包基于 Ubuntu 24.04 构建，需要 GTK 3 和 WebKitGTK 4.1（Ubuntu 可安装 `libgtk-3-0t64 libwebkit2gtk-4.1-0`）；Windows 需要 WebView2 Runtime。macOS 包仅做本地签名，未使用 Apple 开发者证书或公证；Windows 包也未做代码签名，首次打开可能需要在系统安全提示中允许运行。
+
+## 开源协议
+
+SilentOpen 采用 GNU General Public License v3.0（`GPL-3.0-only`）许可，完整条款见 [LICENSE](LICENSE)。第三方依赖及资源仍遵循各自的许可协议。
