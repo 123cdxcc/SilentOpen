@@ -20,11 +20,18 @@ export function createUpdateStore(api: UpdateServiceApi = updateService) {
 
   let active = true
   let started = false
+  let messageTimer: ReturnType<typeof setTimeout> | undefined
 
   const visible = computed(() => Boolean(result.value?.updateAvailable) && !result.value?.skipped && !dismissed.value)
   const latestLabel = computed(() => (result.value?.latestVersion ? `v${result.value.latestVersion}` : ''))
   const notes = computed(() => (result.value?.notes ?? '').trim())
   const assetName = computed(() => result.value?.assetName ?? '')
+
+  function clearMessage() {
+    clearTimeout(messageTimer)
+    messageTimer = undefined
+    message.value = ''
+  }
 
   /**
    * 查询更新。force 为假时用于启动后的静默检查：失败不打扰用户，只在下一次主动
@@ -35,7 +42,7 @@ export function createUpdateStore(api: UpdateServiceApi = updateService) {
     checking.value = true
     if (force) {
       error.value = ''
-      message.value = ''
+      clearMessage()
     }
     try {
       const answer = await api.check(force)
@@ -43,7 +50,10 @@ export function createUpdateStore(api: UpdateServiceApi = updateService) {
       // 发现的是另一个版本时，之前"稍后提醒"的选择不再适用。
       if (answer.latestVersion !== result.value?.latestVersion) dismissed.value = false
       result.value = answer
-      if (force) message.value = checkSummary(answer)
+      if (force) {
+        message.value = checkSummary(answer)
+        if (message.value) messageTimer = setTimeout(clearMessage, 3000)
+      }
     } catch (reason) {
       if (active && force) error.value = describe(reason)
     } finally {
@@ -69,7 +79,7 @@ export function createUpdateStore(api: UpdateServiceApi = updateService) {
       await api.skip(target.latestVersion)
       if (!active) return
       result.value = { ...target, skipped: true }
-      message.value = ''
+      clearMessage()
     } catch (reason) {
       if (active) error.value = describe(reason)
     }
@@ -106,6 +116,7 @@ export function createUpdateStore(api: UpdateServiceApi = updateService) {
 
   /** 由入口组件在卸载时调用：丢弃迟到的结果，并允许重新挂载后再查一次。 */
   function stop() {
+    clearMessage()
     if (!started) return
     started = false
     active = false

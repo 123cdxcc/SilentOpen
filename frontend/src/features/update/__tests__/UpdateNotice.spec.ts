@@ -70,6 +70,7 @@ beforeEach(() => {
 
 afterEach(() => {
   while (wrappers.length) wrappers.pop()!.unmount()
+  vi.useRealTimers()
 })
 
 describe('有新版本时', () => {
@@ -126,13 +127,34 @@ describe('没有新版本时', () => {
     expect(wrapper.text()).toBe('')
   })
 
-  it('主动检查后给出结论', async () => {
+  it('主动检查的结论显示三秒后不再占位，再次检查重新计时', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     fake.check.mockResolvedValue(result({ latestVersion: '1.0.0' }))
     const wrapper = await mountNotice()
-    store.message.value = '当前已是最新版本。'
+    await store.check(true)
     await flushPromises()
 
     expect(wrapper.text()).toContain('当前已是最新版本。')
+    await vi.advanceTimersByTimeAsync(2000)
+    await store.check(true)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(wrapper.text()).toContain('当前已是最新版本。')
+
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(wrapper.find('[role="status"]').exists()).toBe(false)
+    expect(wrapper.text()).toBe('')
+  })
+
+  it('卸载时清除临时结论和计时器', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    fake.check.mockResolvedValue(result({ latestVersion: '1.0.0' }))
+    await mountNotice()
+    await store.check(true)
+    expect(store.message.value).not.toBe('')
+
+    wrappers.pop()!.unmount()
+    expect(store.message.value).toBe('')
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('启动检查失败时不打扰用户', async () => {
